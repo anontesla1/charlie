@@ -1,0 +1,24 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# Default environment variables (you can override these in the Netlify UI)
+[build.environment]
+  # Leave these blank, you'll set the actual values in the Netlify UI
+  ANTHROPIC_API_KEY = ""
+  BRAVE_API_KEY = ""
+  DEEPSEEK_API_KEY = ""
+
+# Handle redirects for SPA
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  
+# Set security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.netlify.app/.netlify/functions/*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; manifest-src 'self'"

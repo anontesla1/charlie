@@ -1,0 +1,23 @@
+{
+  "name": "ai-assistant",
+  "version": "1.0.0",
+  "description": "AI Chat Assistant with API integration",
+  "main": "app.js",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "keywords": [
+    "ai",
+    "chat",
+    "assistant",
+    "pwa"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.15.1"
+  }
+}
