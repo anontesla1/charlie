@@ -340,6 +340,201 @@
             localStorage.setItem('instructionsHidden', 'true');
         }
         
+        // Function to show settings modal
+        function showSettingsModal() {
+            // Create modal container if it doesn't exist
+            let modal = document.getElementById('settings-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'settings-modal';
+                modal.style.position = 'fixed';
+                modal.style.top = '0';
+                modal.style.left = '0';
+                modal.style.width = '100%';
+                modal.style.height = '100%';
+                modal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                modal.style.display = 'flex';
+                modal.style.justifyContent = 'center';
+                modal.style.alignItems = 'center';
+                modal.style.zIndex = '1000';
+                
+                document.body.appendChild(modal);
+            } else {
+                modal.innerHTML = '';
+                modal.style.display = 'flex';
+            }
+            
+            // Create modal content
+            const modalContent = document.createElement('div');
+            modalContent.style.backgroundColor = 'white';
+            modalContent.style.padding = '20px';
+            modalContent.style.borderRadius = '10px';
+            modalContent.style.width = '80%';
+            modalContent.style.maxWidth = '500px';
+            modalContent.style.maxHeight = '80vh';
+            modalContent.style.overflowY = 'auto';
+            modalContent.style.position = 'relative';
+            
+            // Title
+            const title = document.createElement('h2');
+            title.textContent = 'Settings';
+            title.style.marginBottom = '20px';
+            modalContent.appendChild(title);
+            
+            // Close button
+            const closeButton = document.createElement('button');
+            closeButton.textContent = '×';
+            closeButton.style.position = 'absolute';
+            closeButton.style.right = '20px';
+            closeButton.style.top = '15px';
+            closeButton.style.backgroundColor = 'transparent';
+            closeButton.style.border = 'none';
+            closeButton.style.fontSize = '1.5rem';
+            closeButton.style.cursor = 'pointer';
+            closeButton.onclick = () => { modal.style.display = 'none'; };
+            modalContent.appendChild(closeButton);
+            
+            // Get current provider and API keys
+            const currentProvider = localStorage.getItem('currentProvider') || 'anthropic';
+            const apiKeys = {
+                anthropic: localStorage.getItem('apiKey_anthropic') ? atob(localStorage.getItem('apiKey_anthropic')) : '',
+                brave: localStorage.getItem('apiKey_brave') ? atob(localStorage.getItem('apiKey_brave')) : '',
+                deepseek: localStorage.getItem('apiKey_deepseek') ? atob(localStorage.getItem('apiKey_deepseek')) : ''
+            };
+            
+            // TTS toggle
+            const ttsContainer = document.createElement('div');
+            ttsContainer.style.marginBottom = '20px';
+            
+            const ttsLabel = document.createElement('label');
+            ttsLabel.style.display = 'flex';
+            ttsLabel.style.alignItems = 'center';
+            
+            const ttsToggle = document.createElement('input');
+            ttsToggle.type = 'checkbox';
+            ttsToggle.id = 'tts-toggle';
+            ttsToggle.style.marginRight = '10px';
+            ttsToggle.checked = localStorage.getItem('ttsEnabled') === 'true';
+            
+            ttsLabel.appendChild(ttsToggle);
+            ttsLabel.appendChild(document.createTextNode('Auto-read responses aloud'));
+            
+            ttsContainer.appendChild(ttsLabel);
+            modalContent.appendChild(ttsContainer);
+            
+            // API Provider selection
+            const providerContainer = document.createElement('div');
+            providerContainer.style.marginBottom = '20px';
+            
+            const providerLabel = document.createElement('label');
+            providerLabel.textContent = 'Default API Provider:';
+            providerLabel.style.display = 'block';
+            providerLabel.style.marginBottom = '5px';
+            
+            providerContainer.appendChild(providerLabel);
+            
+            const providerSelect = document.createElement('select');
+            providerSelect.id = 'provider-select';
+            providerSelect.style.width = '100%';
+            providerSelect.style.padding = '8px';
+            providerSelect.style.borderRadius = '5px';
+            providerSelect.style.border = '1px solid #ddd';
+            
+            const providers = {
+                'anthropic': 'Anthropic',
+                'brave': 'Brave Search',
+                'deepseek': 'DeepSeek'
+            };
+            
+            for (const [key, value] of Object.entries(providers)) {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = value;
+                if (key === currentProvider) {
+                    option.selected = true;
+                }
+                providerSelect.appendChild(option);
+            }
+            
+            providerContainer.appendChild(providerSelect);
+            modalContent.appendChild(providerContainer);
+            
+            // API Key fields for each provider
+            const apiKeyContainer = document.createElement('div');
+            apiKeyContainer.style.marginBottom = '20px';
+            
+            const apiKeyLabel = document.createElement('h3');
+            apiKeyLabel.textContent = 'API Keys:';
+            apiKeyLabel.style.marginBottom = '10px';
+            
+            apiKeyContainer.appendChild(apiKeyLabel);
+            
+            for (const [key, value] of Object.entries(providers)) {
+                const fieldContainer = document.createElement('div');
+                fieldContainer.style.marginBottom = '10px';
+                
+                const label = document.createElement('label');
+                label.textContent = `${value} API Key:`;
+                label.style.display = 'block';
+                label.style.marginBottom = '5px';
+                
+                const input = document.createElement('input');
+                input.type = 'password';
+                input.id = `${key}-api-key`;
+                input.value = apiKeys[key] || '';
+                input.style.width = '100%';
+                input.style.padding = '8px';
+                input.style.borderRadius = '5px';
+                input.style.border = '1px solid #ddd';
+                
+                fieldContainer.appendChild(label);
+                fieldContainer.appendChild(input);
+                apiKeyContainer.appendChild(fieldContainer);
+            }
+            
+            modalContent.appendChild(apiKeyContainer);
+            
+            // Save button
+            const saveButton = document.createElement('button');
+            saveButton.textContent = 'Save Settings';
+            saveButton.style.backgroundColor = '#4a90e2';
+            saveButton.style.color = 'white';
+            saveButton.style.border = 'none';
+            saveButton.style.padding = '10px 15px';
+            saveButton.style.borderRadius = '5px';
+            saveButton.style.cursor = 'pointer';
+            saveButton.style.width = '100%';
+            
+            saveButton.onclick = () => {
+                // Save TTS setting
+                localStorage.setItem('ttsEnabled', document.getElementById('tts-toggle').checked);
+                
+                // Save selected provider
+                const selectedProvider = document.getElementById('provider-select').value;
+                localStorage.setItem('currentProvider', selectedProvider);
+                
+                // Save API keys - convert to base64 for minimal obfuscation
+                for (const provider of Object.keys(providers)) {
+                    const apiKeyInput = document.getElementById(`${provider}-api-key`);
+                    if (apiKeyInput && apiKeyInput.value) {
+                        localStorage.setItem(`apiKey_${provider}`, btoa(apiKeyInput.value));
+                    }
+                }
+                
+                // Update provider badge
+                document.getElementById('provider-badge').textContent = providers[selectedProvider];
+                
+                // Close modal
+                modal.style.display = 'none';
+                
+                // Show success message
+                alert('Settings saved successfully!');
+            };
+            
+            modalContent.appendChild(saveButton);
+            modal.appendChild(modalContent);
+        }
+        
         // Check if instructions have been hidden before
         window.addEventListener('DOMContentLoaded', () => {
             if (localStorage.getItem('instructionsHidden') === 'true') {
@@ -354,6 +549,9 @@
                 'deepseek': 'DeepSeek'
             };
             document.getElementById('provider-badge').textContent = providerMap[currentProvider] || 'Anthropic';
+            
+            // Add click event to settings button
+            document.getElementById('settings-button').addEventListener('click', showSettingsModal);
         });
         
         // Register service worker for PWA functionality
