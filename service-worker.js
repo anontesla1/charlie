@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ai-assistant-v1';
+const CACHE_NAME = 'ai-assistant-v2';
 const urlsToCache = [
   './',
   './index.html',
@@ -36,6 +36,13 @@ self.addEventListener('activate', event => {
 
 // Fetch event - serve from cache, fall back to network
 self.addEventListener('fetch', event => {
+  // Skip API calls - don't cache them
+  if (event.request.url.includes('api.anthropic.com') || 
+      event.request.url.includes('api.search.brave.com') ||
+      event.request.url.includes('api.deepseek.com')) {
+    return;
+  }
+  
   event.respondWith(
     caches.match(event.request)
       .then(response => {
@@ -67,13 +74,60 @@ self.addEventListener('fetch', event => {
   );
 });
 
+// Handle background sync for offline message sending
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-messages') {
+    event.waitUntil(syncMessages());
+  }
+});
+
+// Function to sync messages when back online
+async function syncMessages() {
+  try {
+    // Get queued messages from IndexedDB
+    const messages = await getQueuedMessages();
+    
+    // Send each message
+    for (const message of messages) {
+      await sendMessage(message);
+      await removeMessageFromQueue(message.id);
+    }
+    
+    // Notify the client that messages have been sent
+    const clients = await self.clients.matchAll();
+    for (const client of clients) {
+      client.postMessage({
+        type: 'SYNC_COMPLETE',
+        messages: messages.length
+      });
+    }
+  } catch (error) {
+    console.error('Error syncing messages:', error);
+  }
+}
+
 // Handle push notifications
 self.addEventListener('push', event => {
   const title = 'AI Assistant';
   const options = {
     body: event.data ? event.data.text() : 'New message from your AI Assistant',
     icon: './icons/icon-192x192.png',
-    badge: './icons/icon-192x192.png'
+    badge: './icons/icon-192x192.png',
+    vibrate: [100, 50, 100],
+    data: {
+      dateOfArrival: Date.now(),
+      primaryKey: 1
+    },
+    actions: [
+      {
+        action: 'open',
+        title: 'Open app'
+      },
+      {
+        action: 'close',
+        title: 'Dismiss'
+      },
+    ]
   };
   
   event.waitUntil(self.registration.showNotification(title, options));
@@ -82,6 +136,10 @@ self.addEventListener('push', event => {
 // Handle notification clicks
 self.addEventListener('notificationclick', event => {
   event.notification.close();
+  
+  if (event.action === 'close') {
+    return;
+  }
   
   event.waitUntil(
     clients.matchAll({type: 'window'})
@@ -99,3 +157,20 @@ self.addEventListener('notificationclick', event => {
       })
   );
 });
+
+// These are placeholder functions - in a real implementation,
+// you would use IndexedDB to manage the message queue
+async function getQueuedMessages() {
+  // Placeholder - should retrieve messages from IndexedDB
+  return [];
+}
+
+async function sendMessage(message) {
+  // Placeholder - would actually send the message to the API
+  return true;
+}
+
+async function removeMessageFromQueue(messageId) {
+  // Placeholder - would remove the message from IndexedDB
+  return true;
+}

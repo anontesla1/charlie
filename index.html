@@ -201,23 +201,84 @@
             cursor: pointer;
             color: #999;
         }
+
+        #settings-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        /* Provider badge */
+        .provider-badge {
+            position: absolute;
+            top: 15px;
+            right: 60px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            color: #4a90e2;
+        }
+
+        /* Command suggestions */
+        .command-suggestions {
+            display: flex;
+            overflow-x: auto;
+            padding: 10px 0;
+            gap: 8px;
+            margin-top: 5px;
+        }
+
+        .command-suggestion {
+            background-color: #f0f0f0;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .command-suggestion:hover {
+            background-color: #e0e0e0;
+        }
     </style>
 </head>
 <body>
     <header>
         <h1>AI Assistant</h1>
+        <div class="provider-badge" id="provider-badge">Anthropic</div>
+        <button id="settings-button" aria-label="Settings">⚙️</button>
     </header>
     
     <div class="chat-container" id="chat-container">
         <div class="app-instructions" id="app-instructions">
             <span class="close-instructions" onclick="hideInstructions()">✕</span>
             <h3>Welcome to Your AI Assistant!</h3>
-            <p>This app can remember your conversations and communicate via text or voice.</p>
-            <p><strong>Tips:</strong></p>
-            <p>• Click the microphone to speak to your assistant</p>
-            <p>• The assistant's responses can be read aloud</p>
-            <p>• Add this app to your home screen for the best experience</p>
-            <p>• Your conversations are saved locally on your device</p>
+            <p>This app can connect to multiple AI providers:</p>
+            <p>• <strong>Anthropic (Claude)</strong> - for general conversation and questions</p>
+            <p>• <strong>Brave Search</strong> - for web search results</p>
+            <p>• <strong>DeepSeek</strong> - for additional AI capabilities</p>
+            <p><strong>Getting Started:</strong></p>
+            <p>1. Click the ⚙️ settings button to add your API keys</p>
+            <p>2. Type "/help" to see available commands</p>
+            <p>3. Use the microphone icon for voice input</p>
+            <p>4. Add this app to your home screen for the best experience</p>
         </div>
         <!-- Chat messages will appear here -->
     </div>
@@ -226,6 +287,12 @@
         <div class="typing-indicator">
             <span></span><span></span><span></span>
         </div>
+    </div>
+    
+    <div class="command-suggestions" id="command-suggestions">
+        <div class="command-suggestion" onclick="insertCommand('/help')">Help</div>
+        <div class="command-suggestion" onclick="insertCommand('/provider')">Switch Provider</div>
+        <div class="command-suggestion" onclick="insertCommand('/clear')">Clear Chat</div>
     </div>
     
     <div class="input-container">
@@ -245,8 +312,37 @@
         </div>
     </div>
     
-    <script src="app.js"></script>
     <script>
+        // Function to insert command into input field
+        function insertCommand(command) {
+            const userInput = document.getElementById('user-input');
+            userInput.value = command;
+            userInput.focus();
+        }
+        
+        // Function to hide instructions
+        function hideInstructions() {
+            const instructions = document.getElementById('app-instructions');
+            instructions.style.display = 'none';
+            localStorage.setItem('instructionsHidden', 'true');
+        }
+        
+        // Check if instructions have been hidden before
+        window.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('instructionsHidden') === 'true') {
+                document.getElementById('app-instructions').style.display = 'none';
+            }
+            
+            // Update provider badge
+            const currentProvider = localStorage.getItem('currentProvider') || 'anthropic';
+            const providerMap = {
+                'anthropic': 'Anthropic',
+                'brave': 'Brave Search',
+                'deepseek': 'DeepSeek'
+            };
+            document.getElementById('provider-badge').textContent = providerMap[currentProvider] || 'Anthropic';
+        });
+        
         // Register service worker for PWA functionality
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -255,19 +351,7 @@
                     .catch(err => console.log('Service Worker registration failed', err));
             });
         }
-
-        function hideInstructions() {
-            const instructions = document.getElementById('app-instructions');
-            instructions.style.display = 'none';
-            localStorage.setItem('instructionsHidden', 'true');
-        }
-
-        // Check if instructions have been hidden before
-        window.addEventListener('DOMContentLoaded', () => {
-            if (localStorage.getItem('instructionsHidden') === 'true') {
-                document.getElementById('app-instructions').style.display = 'none';
-            }
-        });
     </script>
+    <script src="app.js"></script>
 </body>
 </html>
