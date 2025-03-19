@@ -13,17 +13,24 @@ document.addEventListener('DOMContentLoaded', () => {
         providers: {
             anthropic: {
                 name: 'Anthropic',
+                // IMPORTANT FOR GITHUB PAGES DEPLOYMENT:
+                // If you're hosting on GitHub Pages, replace this URL with your proxy URL
+                // Example: 'https://your-proxy-server.com/anthropic/v1/messages'
                 apiEndpoint: 'https://api.anthropic.com/v1/messages',
                 model: 'claude-3-opus-20240229',
                 maxTokens: 1024
             },
             brave: {
                 name: 'Brave Search',
+                // Replace with your proxy URL for GitHub Pages deployment
+                // Example: 'https://your-proxy-server.com/brave/res/v1/web/search'
                 apiEndpoint: 'https://api.search.brave.com/res/v1/web/search',
                 searchCount: 5
             },
             deepseek: {
                 name: 'DeepSeek',
+                // Replace with your proxy URL for GitHub Pages deployment
+                // Example: 'https://your-proxy-server.com/deepseek/v1/chat/completions'
                 apiEndpoint: 'https://api.deepseek.com/v1/chat/completions',
                 model: 'deepseek-chat',
                 maxTokens: 1024
@@ -129,10 +136,38 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async function generateResponse(userMessage) {
         try {
+            // Check for offline mode
+            if (!navigator.onLine) {
+                loadingIndicator.style.display = 'none';
+                const offlineResponse = "You appear to be offline. I'm operating in limited mode with only basic functionality. Please check your internet connection.";
+                addMessageToChat('assistant', offlineResponse);
+                conversationHistory.push({
+                    role: 'assistant',
+                    content: offlineResponse,
+                    timestamp: new Date().toISOString()
+                });
+                saveConversationHistory();
+                
+                // If offline, provide some basic responses to common queries
+                const simpleResponses = getOfflineResponses(userMessage);
+                if (simpleResponses) {
+                    setTimeout(() => {
+                        addMessageToChat('assistant', simpleResponses);
+                        conversationHistory.push({
+                            role: 'assistant',
+                            content: simpleResponses,
+                            timestamp: new Date().toISOString()
+                        });
+                        saveConversationHistory();
+                    }, 1000);
+                }
+                return;
+            }
+            
             // Check if API keys are set
             if (!areApiKeysSet()) {
                 loadingIndicator.style.display = 'none';
-                const response = "Please set your API keys first using the /setkey command. For example: /setkey anthropic YOUR_API_KEY";
+                const response = "Please set your API keys first using the settings menu (⚙️) or the /setkey command. For example: /setkey anthropic YOUR_API_KEY";
                 addMessageToChat('assistant', response);
                 conversationHistory.push({
                     role: 'assistant',
@@ -154,6 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 /setkey [provider] [key] - Set API key for a provider
                 /provider [name] - Switch to a different provider (anthropic, brave, or deepseek)
                 /clear - Clear conversation history
+                /debug - Show debug information about the current setup
                 `;
             } else if (lowerCaseMessage.startsWith('/provider')) {
                 const parts = userMessage.split(' ');
@@ -163,6 +199,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         apiConfig.currentProvider = provider;
                         localStorage.setItem('currentProvider', provider);
                         response = `Switched to ${apiConfig.providers[provider].name} as the active provider.`;
+                        
+                        // Update provider badge
+                        const providerBadge = document.getElementById('provider-badge');
+                        if (providerBadge) {
+                            providerBadge.textContent = apiConfig.providers[provider].name;
+                        }
                     } else {
                         response = `Provider not found. Available providers: ${Object.keys(apiConfig.providers).join(', ')}`;
                     }
@@ -174,16 +216,55 @@ document.addEventListener('DOMContentLoaded', () => {
                 saveConversationHistory();
                 displayConversationHistory();
                 response = "Conversation history cleared.";
+            } else if (lowerCaseMessage.startsWith('/debug')) {
+                // Show debug information about the current setup
+                const debugInfo = {
+                    currentProvider: apiConfig.currentProvider,
+                    apiKeys: {
+                        anthropic: apiConfig.apiKeys.anthropic ? 'Set' : 'Not set',
+                        brave: apiConfig.apiKeys.brave ? 'Set' : 'Not set',
+                        deepseek: apiConfig.apiKeys.deepseek ? 'Set' : 'Not set'
+                    },
+                    hosting: {
+                        hostname: window.location.hostname,
+                        protocol: window.location.protocol,
+                        isGitHubPages: window.location.hostname.includes('github.io'),
+                        isLocalhost: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    },
+                    browser: {
+                        userAgent: navigator.userAgent,
+                        language: navigator.language,
+                        online: navigator.onLine
+                    }
+                };
+                
+                response = "Debug Information:\n```json\n" + JSON.stringify(debugInfo, null, 2) + "\n```\n\nCORS issues are likely if you're using GitHub Pages. Consider setting up a proxy server for API calls.";
             } else {
                 // Make API request based on the current provider
-                if (apiConfig.currentProvider === 'anthropic') {
-                    response = await makeAnthropicRequest(userMessage);
-                } else if (apiConfig.currentProvider === 'brave') {
-                    response = await makeBraveSearchRequest(userMessage);
-                } else if (apiConfig.currentProvider === 'deepseek') {
-                    response = await makeDeepseekRequest(userMessage);
-                } else {
-                    response = "No valid provider selected.";
+                try {
+                    if (apiConfig.currentProvider === 'anthropic') {
+                        response = await makeAnthropicRequest(userMessage);
+                    } else if (apiConfig.currentProvider === 'brave') {
+                        response = await makeBraveSearchRequest(userMessage);
+                    } else if (apiConfig.currentProvider === 'deepseek') {
+                        response = await makeDeepseekRequest(userMessage);
+                    } else {
+                        response = "No valid provider selected.";
+                    }
+                } catch (apiError) {
+                    console.error(`Error calling ${apiConfig.currentProvider} API:`, apiError);
+                    
+                    // If we get a CORS error, suggest using a proxy
+                    if (apiError.message.includes('CORS') || apiError.message.includes('Failed to fetch')) {
+                        response = `Error connecting to ${apiConfig.providers[apiConfig.currentProvider].name} API. This is likely due to CORS restrictions when running on GitHub Pages.\n\nPossible solutions:\n1. Set up a proxy server to handle API calls\n2. Host this app on your own domain with proper CORS headers\n3. Try the /debug command for more information`;
+                    } else {
+                        response = `Error from ${apiConfig.providers[apiConfig.currentProvider].name} API: ${apiError.message}`;
+                    }
+                    
+                    // Add more helpful information
+                    if (window.location.hostname.includes('github.io')) {
+                        response += "\n\nNote: GitHub Pages doesn't allow direct API calls to most services due to security restrictions. You'll need to set up a proxy server to make this work.";
+                    }
                 }
             }
             
@@ -212,7 +293,25 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error generating response:', error);
             loadingIndicator.style.display = 'none';
             
-            const errorMessage = `Sorry, there was an error: ${error.message}. Please try again.`;
+            // Create a more detailed error message
+            let errorMessage = `Sorry, there was an error: ${error.message}.`;
+            
+            // Add suggestions based on error type
+            if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                errorMessage += " This appears to be a network error. Please check your internet connection.";
+                
+                if (window.location.hostname.includes('github.io')) {
+                    errorMessage += " When hosting on GitHub Pages, you'll need a proxy server for API calls due to CORS restrictions.";
+                }
+            } else if (error.message.includes('API key')) {
+                errorMessage += " Please check that you've entered the correct API key in the settings.";
+            } else if (error.message.includes('CORS')) {
+                errorMessage += " This is a Cross-Origin Resource Sharing (CORS) issue. When hosting on platforms like GitHub Pages, you'll need to use a proxy server for API calls.";
+            }
+            
+            // Add general troubleshooting advice
+            errorMessage += "\n\nTry the following:\n1. Check the browser console for detailed error logs\n2. Use the /debug command for system information\n3. Verify your API keys are correct";
+            
             addMessageToChat('assistant', errorMessage);
             
             conversationHistory.push({
@@ -223,6 +322,33 @@ document.addEventListener('DOMContentLoaded', () => {
             
             saveConversationHistory();
         }
+    }
+    
+    // Function to provide basic responses when offline
+    function getOfflineResponses(message) {
+        const lowerMessage = message.toLowerCase();
+        
+        // Simple pattern matching for offline mode
+        if (lowerMessage.includes('hello') || lowerMessage.includes('hi ') || lowerMessage === 'hi') {
+            return "Hello! I'm currently in offline mode, but I can still help with basic responses.";
+        } else if (lowerMessage.includes('help')) {
+            return "I'm in offline mode with limited functionality. Once you're back online, you can use the full features of this AI assistant.";
+        } else if (lowerMessage.includes('weather')) {
+            return "I can't check the weather while offline. Please reconnect to the internet.";
+        } else if (lowerMessage.includes('time')) {
+            return `The current time is ${new Date().toLocaleTimeString()}.`;
+        } else if (lowerMessage.includes('date')) {
+            return `Today is ${new Date().toLocaleDateString()}.`;
+        } else if (lowerMessage.includes('joke')) {
+            const jokes = [
+                "Why don't scientists trust atoms? Because they make up everything!",
+                "Why did the scarecrow win an award? Because he was outstanding in his field!",
+                "I told my wife she was drawing her eyebrows too high. She looked surprised."
+            ];
+            return jokes[Math.floor(Math.random() * jokes.length)];
+        }
+        
+        return "I'm currently offline and can only provide limited responses. Please check your internet connection to use the full AI features.";
     }
     
     async function makeAnthropicRequest(userMessage) {
@@ -246,61 +372,148 @@ document.addEventListener('DOMContentLoaded', () => {
             role: 'user',
             content: userMessage
         });
+
+        console.log("Preparing Anthropic API request with endpoint:", apiConfig.providers.anthropic.apiEndpoint);
+        console.log("Using model:", apiConfig.providers.anthropic.model);
         
-        const response = await fetch(apiConfig.providers.anthropic.apiEndpoint, {
-            method: 'POST',
-            headers: {
+        try {
+            // Use a proxy if in development/GitHub Pages environment to avoid CORS
+            const useProxy = window.location.hostname.includes('github.io') || 
+                             window.location.hostname === 'localhost' ||
+                             window.location.hostname === '127.0.0.1';
+            
+            let requestEndpoint = apiConfig.providers.anthropic.apiEndpoint;
+            let headers = {
                 'Content-Type': 'application/json',
-                'x-api-key': apiKey,
                 'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: apiConfig.providers.anthropic.model,
-                messages: messages,
-                max_tokens: apiConfig.providers.anthropic.maxTokens
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Anthropic API error: ${errorData.error?.message || response.statusText}`);
+            };
+            
+            // Add direct API key or prepare for proxy
+            if (useProxy) {
+                console.log("Using proxy for Anthropic API call");
+                // When using GitHub Pages, we need to use a proxy service
+                requestEndpoint = 'https://cors-anywhere.herokuapp.com/' + requestEndpoint;
+                // The proxy will need to add the API key on the server side
+                headers['X-Proxy-API-Key'] = apiKey; // Custom header for our proxy
+            } else {
+                // Direct API key for self-hosted environments
+                headers['x-api-key'] = apiKey;
+            }
+            
+            // Make the API request
+            const response = await fetch(requestEndpoint, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    model: apiConfig.providers.anthropic.model,
+                    messages: messages,
+                    max_tokens: apiConfig.providers.anthropic.maxTokens
+                })
+            });
+            
+            console.log("Anthropic API response status:", response.status);
+            
+            if (!response.ok) {
+                let errorMessage = "HTTP error " + response.status;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = `Anthropic API error: ${errorData.error?.message || response.statusText}`;
+                    console.error("API error details:", errorData);
+                } catch (jsonError) {
+                    // If response isn't JSON
+                    const textError = await response.text();
+                    errorMessage = `Anthropic API error: ${textError || response.statusText}`;
+                    console.error("API error text:", textError);
+                }
+                throw new Error(errorMessage);
+            }
+            
+            const data = await response.json();
+            console.log("Anthropic API response received successfully");
+            return data.content[0].text;
+        } catch (error) {
+            console.error("Error in Anthropic API call:", error);
+            
+            // Provide detailed error information based on the type of error
+            if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                throw new Error('Network error: Could not connect to Anthropic API. This could be due to CORS restrictions when running on GitHub Pages. Consider setting up a proxy server.');
+            }
+            
+            throw error;
         }
-        
-        const data = await response.json();
-        return data.content[0].text;
     }
     
     async function makeBraveSearchRequest(query) {
         const apiKey = apiConfig.apiKeys.brave;
         if (!apiKey) return "Brave Search API key not set. Use /setkey brave YOUR_API_KEY";
         
-        const response = await fetch(`${apiConfig.providers.brave.apiEndpoint}?q=${encodeURIComponent(query)}&count=${apiConfig.providers.brave.searchCount}`, {
-            headers: {
-                'Accept': 'application/json',
-                'X-Subscription-Token': apiKey
+        const searchUrl = `${apiConfig.providers.brave.apiEndpoint}?q=${encodeURIComponent(query)}&count=${apiConfig.providers.brave.searchCount}`;
+        console.log("Preparing Brave Search API request to:", searchUrl);
+        
+        try {
+            // Use a proxy if in development/GitHub Pages environment to avoid CORS
+            const useProxy = window.location.hostname.includes('github.io') || 
+                             window.location.hostname === 'localhost' ||
+                             window.location.hostname === '127.0.0.1';
+            
+            let requestUrl = searchUrl;
+            let headers = {
+                'Accept': 'application/json'
+            };
+            
+            if (useProxy) {
+                console.log("Using proxy for Brave Search API call");
+                requestUrl = 'https://cors-anywhere.herokuapp.com/' + requestUrl;
+                headers['X-Proxy-API-Key'] = apiKey; // For proxy to use
+            } else {
+                headers['X-Subscription-Token'] = apiKey; // Direct API key
             }
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Brave Search API error: ${errorData.message || response.statusText}`);
+            
+            const response = await fetch(requestUrl, { headers });
+            
+            console.log("Brave Search API response status:", response.status);
+            
+            if (!response.ok) {
+                let errorMessage = "HTTP error " + response.status;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = `Brave Search API error: ${errorData.message || response.statusText}`;
+                    console.error("API error details:", errorData);
+                } catch (jsonError) {
+                    // If response isn't JSON
+                    const textError = await response.text();
+                    errorMessage = `Brave Search API error: ${textError || response.statusText}`;
+                    console.error("API error text:", textError);
+                }
+                throw new Error(errorMessage);
+            }
+            
+            const data = await response.json();
+            console.log("Brave Search API response received successfully");
+            
+            // Format search results
+            let formattedResponse = `Here are search results for "${query}":\n\n`;
+            
+            if (data.web && data.web.results && data.web.results.length > 0) {
+                data.web.results.forEach((result, index) => {
+                    formattedResponse += `${index + 1}. [${result.title}](${result.url})\n`;
+                    formattedResponse += `${result.description}\n\n`;
+                });
+            } else {
+                formattedResponse += "No results found.";
+            }
+            
+            return formattedResponse;
+        } catch (error) {
+            console.error("Error in Brave Search API call:", error);
+            
+            // Provide detailed error information
+            if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                throw new Error('Network error: Could not connect to Brave Search API. This could be due to CORS restrictions when running on GitHub Pages. Consider setting up a proxy server.');
+            }
+            
+            throw error;
         }
-        
-        const data = await response.json();
-        
-        // Format search results
-        let formattedResponse = `Here are search results for "${query}":\n\n`;
-        
-        if (data.web && data.web.results && data.web.results.length > 0) {
-            data.web.results.forEach((result, index) => {
-                formattedResponse += `${index + 1}. [${result.title}](${result.url})\n`;
-                formattedResponse += `${result.description}\n\n`;
-            });
-        } else {
-            formattedResponse += "No results found.";
-        }
-        
-        return formattedResponse;
     }
     
     async function makeDeepseekRequest(userMessage) {
@@ -325,26 +538,68 @@ document.addEventListener('DOMContentLoaded', () => {
             content: userMessage
         });
         
-        const response = await fetch(apiConfig.providers.deepseek.apiEndpoint, {
-            method: 'POST',
-            headers: {
+        console.log("Preparing DeepSeek API request with endpoint:", apiConfig.providers.deepseek.apiEndpoint);
+        console.log("Using model:", apiConfig.providers.deepseek.model);
+        
+        try {
+            // Use a proxy if in development/GitHub Pages environment to avoid CORS
+            const useProxy = window.location.hostname.includes('github.io') || 
+                            window.location.hostname === 'localhost' ||
+                            window.location.hostname === '127.0.0.1';
+            
+            let requestEndpoint = apiConfig.providers.deepseek.apiEndpoint;
+            let headers = {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: apiConfig.providers.deepseek.model,
-                messages: messages,
-                max_tokens: apiConfig.providers.deepseek.maxTokens
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`DeepSeek API error: ${errorData.error?.message || response.statusText}`);
+            };
+            
+            if (useProxy) {
+                console.log("Using proxy for DeepSeek API call");
+                requestEndpoint = 'https://cors-anywhere.herokuapp.com/' + requestEndpoint;
+                headers['X-Proxy-API-Key'] = apiKey; // For proxy to use
+            } else {
+                headers['Authorization'] = `Bearer ${apiKey}`; // Direct API key
+            }
+            
+            const response = await fetch(requestEndpoint, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    model: apiConfig.providers.deepseek.model,
+                    messages: messages,
+                    max_tokens: apiConfig.providers.deepseek.maxTokens
+                })
+            });
+            
+            console.log("DeepSeek API response status:", response.status);
+            
+            if (!response.ok) {
+                let errorMessage = "HTTP error " + response.status;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = `DeepSeek API error: ${errorData.error?.message || response.statusText}`;
+                    console.error("API error details:", errorData);
+                } catch (jsonError) {
+                    // If response isn't JSON
+                    const textError = await response.text();
+                    errorMessage = `DeepSeek API error: ${textError || response.statusText}`;
+                    console.error("API error text:", textError);
+                }
+                throw new Error(errorMessage);
+            }
+            
+            const data = await response.json();
+            console.log("DeepSeek API response received successfully");
+            return data.choices[0].message.content;
+        } catch (error) {
+            console.error("Error in DeepSeek API call:", error);
+            
+            // Provide detailed error information
+            if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                throw new Error('Network error: Could not connect to DeepSeek API. This could be due to CORS restrictions when running on GitHub Pages. Consider setting up a proxy server.');
+            }
+            
+            throw error;
         }
-        
-        const data = await response.json();
-        return data.choices[0].message.content;
     }
     
     function handleSetKeyCommand(message) {
