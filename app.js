@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const micButton = document.getElementById('mic-button');
     const loadingIndicator = document.getElementById('loading-indicator');
     
+    // Debug mode
+    let debugMode = false;
+    
     // Speech recognition setup
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
@@ -31,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         recognition.onerror = (event) => {
             console.error('Speech recognition error', event.error);
+            logDebug(`Speech recognition error: ${event.error}`, 'error');
             micButton.classList.remove('voice-active');
         };
     }
@@ -45,6 +49,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Display existing conversation
     displayConversationHistory();
+    
+    // Add debug tools
+    addDebugTools();
     
     // Event Listeners
     sendButton.addEventListener('click', sendMessage);
@@ -82,89 +89,51 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingIndicator.style.display = 'block';
         
         // Generate AI response
-        generateResponse(message);
+        setTimeout(() => {
+            generateResponse(message);
+        }, 500);
     }
     
-    async function generateResponse(userMessage) {
-        try {
-            // First try to get a response from the AI API
-            const apiResponse = await getAIResponse(userMessage);
+    function generateResponse(userMessage) {
+        // Handle debug commands
+        if (userMessage.toLowerCase() === '/debug') {
+            debugMode = !debugMode;
+            const response = debugMode ? 'Debug mode enabled. Check the debug panel at the bottom right corner.' : 'Debug mode disabled.';
+            
+            // Update UI if debug toggle exists
+            const debugToggle = document.querySelector('button[data-debug-toggle]');
+            if (debugToggle) {
+                debugToggle.textContent = debugMode ? '🐞 Debug: ON' : '🐞 Debug: OFF';
+                debugToggle.style.backgroundColor = debugMode ? '#ffcccc' : '#e0e0e0';
+            }
+            
+            // Create or toggle debug panel
+            const debugPanel = document.getElementById('debug-panel');
+            if (debugPanel) {
+                debugPanel.style.display = debugMode ? 'block' : 'none';
+            } else if (debugMode) {
+                createDebugPanel();
+            }
             
             // Hide loading indicator
             loadingIndicator.style.display = 'none';
             
-            // Add AI response to UI
-            addMessageToChat('assistant', apiResponse);
+            // Add response to chat
+            addMessageToChat('assistant', response);
             
             // Add to conversation history
             conversationHistory.push({
                 role: 'assistant',
-                content: apiResponse,
+                content: response,
                 timestamp: new Date().toISOString()
             });
             
             // Save conversation
             saveConversationHistory();
-            
-            // Read response aloud if enabled
-            speakText(apiResponse);
-        } catch (error) {
-            console.error('Error getting AI response:', error);
-            
-            // Fallback to rule-based responses
-            generateFallbackResponse(userMessage);
+            return;
         }
-    }
-    
-    async function getAIResponse(userMessage) {
-        try {
-            // Format the conversation history for the API
-            const formattedHistory = conversationHistory.map(msg => ({
-                role: msg.role,
-                content: msg.content
-            }));
-            
-            // Add the current user message
-            formattedHistory.push({
-                role: 'user',
-                content: userMessage
-            });
-            
-            // Use the Netlify function as a proxy to the AI API
-            const response = await fetch('/.netlify/functions/proxy', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    // Replace with your actual AI API endpoint
-                    apiUrl: 'https://api.openai.com/v1/chat/completions',
-                    requestBody: {
-                        model: 'gpt-3.5-turbo',
-                        messages: formattedHistory,
-                        max_tokens: 500
-                    }
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`API request failed with status ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            // Extract the assistant's response
-            // The exact structure depends on the API you're using
-            // This structure is for OpenAI's API
-            return data.choices[0].message.content;
-        } catch (error) {
-            console.error('Error in AI API request:', error);
-            throw error;
-        }
-    }
-    
-    function generateFallbackResponse(userMessage) {
-        // Simple rule-based responses as fallback
+        
+        // Simple rule-based responses
         let response;
         const lowerCaseMessage = userMessage.toLowerCase();
         
@@ -180,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (lowerCaseMessage.includes('bye') || lowerCaseMessage.includes('goodbye')) {
             response = "Goodbye! Feel free to chat again anytime.";
         } else if (lowerCaseMessage.includes('help')) {
-            response = "I can chat with you, remember our conversations, and respond to voice commands. What would you like to know?";
+            response = "I can chat with you, remember our conversations, and respond to voice commands. You can enable debug mode by typing '/debug' to help troubleshoot connectivity issues.";
         } else if (lowerCaseMessage.includes('time')) {
             const now = new Date();
             response = `The current time is ${now.toLocaleTimeString()}.`;
@@ -197,13 +166,18 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             response = jokes[Math.floor(Math.random() * jokes.length)];
         } else {
+            logDebug(`Checking for previous question context for: "${lowerCaseMessage}"`, 'info');
             // Check conversation history for context
             if (checkForPreviousQuestion(userMessage)) {
                 response = checkForPreviousQuestion(userMessage);
+                logDebug(`Found contextual response: "${response.substring(0, 50)}..."`, 'success');
             } else {
-                response = "I'm currently having trouble connecting to my AI backend. I'm a simple assistant with limited capabilities. Could you try again later or ask me something simple?";
+                logDebug('No contextual response found, using default', 'info');
+                response = "I'm a simple AI assistant built as a PWA. In a real implementation, I would connect to an AI API like OpenAI or Anthropic to generate more intelligent responses. How else can I help you?";
             }
         }
+        
+        logDebug(`Generated response: "${response.substring(0, 50)}..."`, 'success');
         
         // Hide loading indicator
         loadingIndicator.style.display = 'none';
@@ -386,6 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
         } catch (error) {
             console.error('Error saving conversation history:', error);
+            logDebug(`Error saving conversation history: ${error.message}`, 'error');
             
             // If storage limit exceeded, remove oldest conversations
             if (error.name === 'QuotaExceededError') {
@@ -401,8 +376,146 @@ document.addEventListener('DOMContentLoaded', () => {
             return savedHistory ? JSON.parse(savedHistory) : [];
         } catch (error) {
             console.error('Error loading conversation history:', error);
+            logDebug(`Error loading conversation history: ${error.message}`, 'error');
             return [];
         }
+    }
+    
+    // Debug related functions
+    function addDebugTools() {
+        // Create debug toggle in header
+        const header = document.querySelector('header');
+        
+        const debugContainer = document.createElement('div');
+        debugContainer.style.marginTop = '5px';
+        debugContainer.style.fontSize = '0.8rem';
+        
+        const debugToggle = document.createElement('button');
+        debugToggle.textContent = '🐞 Debug: OFF';
+        debugToggle.setAttribute('data-debug-toggle', 'true');
+        debugToggle.style.padding = '3px 8px';
+        debugToggle.style.backgroundColor = '#e0e0e0';
+        debugToggle.style.border = 'none';
+        debugToggle.style.borderRadius = '3px';
+        debugToggle.style.cursor = 'pointer';
+        debugToggle.style.fontSize = '0.8rem';
+        
+        debugToggle.addEventListener('click', () => {
+            debugMode = !debugMode;
+            debugToggle.textContent = debugMode ? '🐞 Debug: ON' : '🐞 Debug: OFF';
+            debugToggle.style.backgroundColor = debugMode ? '#ffcccc' : '#e0e0e0';
+            
+            const debugPanel = document.getElementById('debug-panel');
+            if (debugPanel) {
+                debugPanel.style.display = debugMode ? 'block' : 'none';
+            } else if (debugMode) {
+                createDebugPanel();
+            }
+        });
+        
+        debugContainer.appendChild(debugToggle);
+        header.appendChild(debugContainer);
+    }
+    
+    function createDebugPanel() {
+        // Create debug panel
+        const debugPanel = document.createElement('div');
+        debugPanel.id = 'debug-panel';
+        debugPanel.style.position = 'fixed';
+        debugPanel.style.bottom = '70px';
+        debugPanel.style.right = '10px';
+        debugPanel.style.width = '300px';
+        debugPanel.style.height = '200px';
+        debugPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        debugPanel.style.color = '#00ff00';
+        debugPanel.style.padding = '10px';
+        debugPanel.style.borderRadius = '5px';
+        debugPanel.style.fontFamily = 'monospace';
+        debugPanel.style.fontSize = '10px';
+        debugPanel.style.overflow = 'auto';
+        debugPanel.style.zIndex = '1000';
+        
+        // Add header and clear button
+        const debugHeader = document.createElement('div');
+        debugHeader.style.display = 'flex';
+        debugHeader.style.justifyContent = 'space-between';
+        debugHeader.style.marginBottom = '5px';
+        
+        const debugTitle = document.createElement('span');
+        debugTitle.textContent = 'Debug Console';
+        debugTitle.style.fontWeight = 'bold';
+        
+        const clearButton = document.createElement('button');
+        clearButton.textContent = 'Clear';
+        clearButton.style.padding = '1px 5px';
+        clearButton.style.backgroundColor = '#333';
+        clearButton.style.color = 'white';
+        clearButton.style.border = 'none';
+        clearButton.style.borderRadius = '3px';
+        clearButton.style.cursor = 'pointer';
+        clearButton.style.fontSize = '8px';
+        
+        clearButton.addEventListener('click', () => {
+            const logContainer = document.getElementById('debug-log');
+            if (logContainer) {
+                logContainer.innerHTML = '';
+            }
+        });
+        
+        debugHeader.appendChild(debugTitle);
+        debugHeader.appendChild(clearButton);
+        debugPanel.appendChild(debugHeader);
+        
+        // Add log container
+        const logContainer = document.createElement('div');
+        logContainer.id = 'debug-log';
+        debugPanel.appendChild(logContainer);
+        
+        document.body.appendChild(debugPanel);
+        
+        // Add initial debug info
+        logDebug('Debug mode initialized', 'info');
+        logDebug(`Conversation history: ${conversationHistory.length} messages`, 'info');
+        logDebug('To disable debug mode, type "/debug" or click the debug button', 'info');
+    }
+    
+    function logDebug(message, type = 'info') {
+        // Always log to console
+        console.log(`[DEBUG] ${message}`);
+        
+        if (!debugMode) return;
+        
+        const logContainer = document.getElementById('debug-log');
+        if (!logContainer) return;
+        
+        const logEntry = document.createElement('div');
+        logEntry.style.marginBottom = '2px';
+        logEntry.style.borderBottom = '1px solid #333';
+        logEntry.style.paddingBottom = '2px';
+        
+        // Set color based on type
+        switch(type) {
+            case 'error':
+                logEntry.style.color = '#ff6666';
+                break;
+            case 'warn':
+                logEntry.style.color = '#ffcc00';
+                break;
+            case 'success':
+                logEntry.style.color = '#66ff66';
+                break;
+            case 'api':
+                logEntry.style.color = '#66ccff';
+                break;
+            default:
+                logEntry.style.color = '#cccccc';
+        }
+        
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        logEntry.innerHTML = `<span style="color:#888">[${timestamp}]</span> ${message}`;
+        
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
     }
     
     // Add a welcome message if it's the first time
